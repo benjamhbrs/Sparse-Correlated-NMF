@@ -1,4 +1,10 @@
+using DelimitedFiles
+
 function normalise_cols(b)
+    return b/sum(b)
+end
+
+function normalise_rows(b)
     return b/sum(b)
 end
 
@@ -57,6 +63,20 @@ function sparsity_norm(A,eps,alpha)
         end
     end 
     return count
+end
+
+function reconstruction_errors(X1,X2,P1,P2,E1,E2,A,C)
+    println("NMF_1 Frobenius error = ", norm(X1 - P1*E1))
+    println("NMF_2 Frobenius error = ",  norm(X2 - P2*E2))
+    println("A-C Frobenius norm = ",  norm(A - C))
+    println("abs(A-C) mean value = ",  mean(abs.(A-C)))
+    println("abs(A-C) max value = ",  maximum(abs.(A-C)))
+    println("Elements of A in [alpha, 1] : ",  size(A)[2]*size(A)[1]- sparsity_norm(A,-1,alpha))
+    println("Elements of A in [0, eps] : ",  size(A)[2]*size(A)[1] - sparsity_norm(A,eps,2))
+    println("Elements of A in ]eps, alpha[: ",  sparsity_norm(A,eps,alpha))
+    println("Elements of C in [alpha, 1] : ",  size(C)[2]*size(C)[1]- sparsity_norm(C,-1,alpha))
+    println("Elements of C in [0, eps] : ",  size(C)[2]*size(C)[1] - sparsity_norm(C,eps,2))
+    println("Elements of C in ]eps, alpha[: ",  sparsity_norm(C,eps,alpha))
 end
 
 function sparsity_norm(A,eps)
@@ -126,16 +146,17 @@ end
 function grad_E1(A,E1,E2)
     c = s(E1,E2)
     s1,N = size(E1)
+    s2,N = size(E2)
     grad_E1 = zeros(s1,N)
     for i=1:s1
         for k=1:N
             d = zeros(s1,s2)
                 for j=1:s2
-                        u = E1[i,:]
-                        v = E2[j,:]
-                        d[i,j] = 1/(norm(u)*norm(v))*v[k] + 1/norm(u)^2*c[i,j]*u[k]
+                    u = E1[i,:]
+                    v = E2[j,:]
+                    d[i,j] = 1/(norm(u)*norm(v))*v[k] - 1/norm(u)^2*c[i,j]*u[k]
                 end
-            grad_E1[i,k] = prod(c-A,d)
+            grad_E1[i,k] = 2*prod(c-A,d)
         end
     end
     return grad_E1
@@ -143,21 +164,18 @@ end
 
 function grad_E2(A,E1,E2)
     c = s(E1,E2)
+    s1,N = size(E1)
     s2,N = size(E2)
     grad_E2 = zeros(s2,N)
     for j=1:s2
         for k=1:N
             d = zeros(s1,s2)
-            for i_=1:s1
-                for j_=1:s2
-                    if j_ == j
-                        u = E1[i_,:]
-                        v = E2[j_,:]
-                        d[i_,j_] = 1/(norm(u)*norm(v))*u[k] + 1/norm(v)^2*c[i_,j_]*v[k]
-                    end
+                for i=1:s1
+                    u = E1[i,:]
+                    v = E2[j,:]
+                    d[i,j] = 1/(norm(u)*norm(v))*u[k] - 1/norm(v)^2*c[i,j]*v[k]
                 end
-            end
-            grad_E2[j,k] = prod(c-A,d)
+            grad_E2[j,k] = 2*prod(c-A,d)
         end
     end
     return grad_E2
@@ -165,7 +183,8 @@ end
 
 function proj_sparse(E1,E2,l)
     C = s(E1,E2)
-    _,N = size(E1)
+    s1,N = size(E1)
+    s2,N = size(E1)
     sparsitynorm = sparsity_norm(C,0)
     if l - sparsitynorm >= 0
         return E1,E2
@@ -180,35 +199,46 @@ function proj_sparse(E1,E2,l)
             end
         end
     end
-    sort!(d, by = x -> x[2][1])
 
+    sort!(d, by = x -> x[2][1])
+    
     for l=1:n_to_be_zeroed
-        (i,j), (_,where_min_achieved) = d[l]
+        (i,j), (_,where_is_min_achieved) = d[l]
         for k=1:N
-            if where_min_achieved[k] == 1
+            if where_is_min_achieved[k] == 1
                 E1[i,k] = 0
-            elseif where_min_achieved[k] == 2
-                E1[i,k] = 0
+            elseif where_is_min_achieved[k] == 2
+                E2[j,k] = 0
             end
         end
     end
 
-    return E1,E2
+    return E1,E2,s(E1,E2)
 
 end
 
 function dist_to_zero(E1,E2,i,j)
     _,N = size(E1)
     sum = 0
-    where_min_achieved = zeros(N)
+    where_is_min_achieved = zeros(N)
     for k=1:N
         if E1[i,k] < E2[j,k]
             sum = sum + E1[i,k]
-            where_min_achieved[k] = 1
+            where_is_min_achieved[k] = 1
         else
             sum = sum + E2[j,k]
-            where_min_achieved[k] = 2
+            where_is_min_achieved[k] = 2
         end
     end
-    return sum, where_min_achieved
+    return sum, where_is_min_achieved
+end
+
+function save_as_CSV(X1,X2,P1,P2,E1,E2,A,C)
+    writedlm( "result_run/X1.csv", X1)
+    writedlm( "result_run/X2.csv", X2)
+    writedlm( "result_run/E1.csv", E1)
+    writedlm( "result_run/E2.csv", E2)
+    writedlm( "result_run/P1.csv", P1)
+    writedlm( "result_run/P2.csv", P2)
+    writedlm( "result_run/C.csv", C)
 end

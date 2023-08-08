@@ -74,7 +74,7 @@ function initialisation(path_to_modality_1,path_to_modality_2,s1,s2)
     A[3,6] = 1
     A[2,3] = 1
     A[2,4] = 1
-    A[2,5] = 1 =#
+    A[2,5] = 1  =#
 
     return X1,P1,E1,X2,P2,E2,A
 
